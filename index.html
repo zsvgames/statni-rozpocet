@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Státní rozpočet — hra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAFAF8;
+    --surface:#FFFFFF;
+    --ink:#16181D;
+    --ink-soft:#6B6E76;
+    --ink-faint:#9A9CA4;
+    --line:#E6E4DD;
+    --line-strong:#D6D3C8;
+
+    --up:#2E7D4F;       /* zvýšit */
+    --up-tint:#EAF4EE;
+    --down:#A34B3F;     /* snížit */
+    --down-tint:#F5EEEC;
+    --hold-tint:#F1F0EC; /* ponechat */
+
+    --levice:#A34B3F;
+    --pravice:#345E82;
+
+    --radius:12px;
+    --shadow:0 1px 2px rgba(22,24,29,0.04), 0 6px 16px -10px rgba(22,24,29,0.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wrap{max-width:920px; margin:0 auto; padding:20px 16px 56px;}
+
+  /* ---------- Header ---------- */
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:12px; padding-bottom:16px; margin-bottom:20px;
+    border-bottom:1px solid var(--line-strong);
+  }
+  header .eyebrow{
+    font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; font-weight:600;
+    color:var(--ink-faint); display:block; margin-bottom:4px;
+  }
+  header h1{
+    font-family:'Fraunces', serif; font-weight:600; font-size:clamp(20px,4.4vw,28px);
+    margin:0; letter-spacing:0.1px; line-height:1.15;
+  }
+  #resetBtn{
+    background:transparent; border:1px solid var(--line-strong); color:var(--ink-soft);
+    padding:9px 14px; border-radius:20px; font-family:'IBM Plex Sans'; font-size:13px; font-weight:500;
+    cursor:pointer; white-space:nowrap; flex:none;
+  }
+  #resetBtn:hover{border-color:var(--ink); color:var(--ink);}
+  #resetBtn:focus-visible, .chip:focus-visible, #resultBtn:focus-visible, .btn-primary:focus-visible, .btn-secondary:focus-visible{
+    outline:2px solid var(--ink); outline-offset:2px;
+  }
+
+  /* ---------- Balance ledger ---------- */
+  .ledger{
+    display:flex; align-items:center; gap:16px; background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:14px 16px; margin-bottom:16px; box-shadow:var(--shadow);
+    flex-wrap:wrap;
+  }
+  .scale{position:relative; width:46px; height:32px; flex:none;}
+  .scale svg{width:100%; height:100%; display:block;}
+  .beam{ transform-origin: 32px 14px; transition: transform .35s cubic-bezier(.4,1.4,.6,1); }
+  .ledger-text{flex:1; min-width:180px;}
+  .ledger-label{font-size:11px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600; color:var(--ink-faint);}
+  .ledger-value{font-family:'Fraunces',serif; font-weight:600; font-size:19px; margin-top:3px;}
+  .ledger-note{font-size:12.5px; color:var(--ink-soft); margin-top:4px; max-width:560px; line-height:1.45;}
+  .balance-pill{
+    font-weight:600; font-size:13px; padding:6px 12px; border-radius:20px; white-space:nowrap;
+    background:var(--hold-tint); color:var(--ink-soft); border:1px solid var(--line);
+  }
+
+  /* ---------- Columns ---------- */
+  .board{
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px;
+  }
+  @media (max-width:720px){
+    .board{grid-template-columns:1fr;}
+  }
+  .column{
+    background:var(--surface); border-radius:var(--radius); border:1px solid var(--line); box-shadow:var(--shadow);
+    padding:10px; min-height:120px; display:flex; flex-direction:column; gap:8px;
+    transition: box-shadow .15s ease, transform .1s ease;
+    border-top:3px solid var(--line-strong);
+  }
+  .col-zvysit{border-top-color:var(--up);}
+  .col-snizit{border-top-color:var(--down);}
+  .column.drop-hover{ box-shadow: 0 0 0 3px rgba(22,24,29,0.14), var(--shadow); transform: scale(1.01); }
+  .column.drop-full{ box-shadow: 0 0 0 3px rgba(163,75,63,0.35), var(--shadow); }
+  .column.shake{ animation: shake .35s ease; }
+  @keyframes shake{
+    0%,100%{transform:translateX(0);}
+    20%{transform:translateX(-6px);}
+    40%{transform:translateX(5px);}
+    60%{transform:translateX(-4px);}
+    80%{transform:translateX(3px);}
+  }
+  .col-head small.full-label{color:var(--down); font-weight:600; opacity:1;}
+  .col-head{
+    padding:6px 4px 8px; font-family:'Fraunces',serif; font-weight:600; font-size:14.5px;
+    text-align:left; color:var(--ink); display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+  }
+  .col-head small{font-family:'IBM Plex Sans'; font-weight:500; font-size:11px; color:var(--ink-faint); white-space:nowrap;}
+  .col-body{flex:1; display:flex; flex-wrap:wrap; align-content:flex-start; gap:7px; padding:2px; min-height:64px;}
+  .fixed-chip{
+    background:var(--hold-tint); color:var(--ink-soft); font-size:12.5px; font-weight:500; padding:8px 11px;
+    border-radius:8px; cursor:default; border:1px solid var(--line);
+  }
+  .empty-hint{
+    color:var(--ink-faint); font-size:12px; font-style:italic; padding:10px 8px; width:100%; text-align:center;
+    border:1px dashed var(--line-strong); border-radius:9px;
+  }
+
+  /* ---------- Chips ---------- */
+  .chip{
+    background:var(--ink); color:#fff; font-size:12.5px; font-weight:500; line-height:1.25;
+    padding:9px 12px; border-radius:9px; cursor:grab; user-select:none; touch-action:none;
+    box-shadow:0 1px 2px rgba(0,0,0,0.12); position:relative; max-width:100%;
+    border:1px solid transparent;
+  }
+  .chip:active{cursor:grabbing;}
+  .chip.dragging{opacity:0; }
+  .chip.chip-zvysit{ background:var(--up-tint); color:var(--up); border-color:var(--up); box-shadow:none; }
+  .chip.chip-snizit{ background:var(--down-tint); color:var(--down); border-color:var(--down); box-shadow:none; }
+  .chip.chip-ponechat{ background:var(--hold-tint); color:var(--ink-soft); border-color:var(--line-strong); box-shadow:none; }
+  .ghost{
+    position:fixed; z-index:999; pointer-events:none; padding:9px 12px; border-radius:9px;
+    background:var(--ink); color:#fff; font-size:12.5px; font-weight:500; box-shadow:0 10px 24px -6px rgba(0,0,0,0.3);
+    transform:translate(-50%,-50%) scale(1.04); opacity:0.97;
+  }
+
+  /* ---------- Pool ---------- */
+  .pool-wrap{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow);
+  }
+  .pool-title{font-size:11px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600; color:var(--ink-faint); margin-bottom:10px;}
+  .pool-body{display:flex; flex-wrap:wrap; gap:8px;}
+  .pool-body:empty::after{
+    content:'Vše rozdistribuováno'; color:var(--ink-faint); font-size:12px; font-style:italic;
+  }
+
+  /* ---------- CTA ---------- */
+  .cta-row{display:flex; justify-content:center; margin-top:24px;}
+  #resultBtn{
+    font-family:'Fraunces',serif; font-weight:600; font-size:15.5px; color:#fff; background:var(--ink);
+    border:none; padding:14px 30px; border-radius:30px; cursor:pointer; box-shadow:var(--shadow);
+    letter-spacing:0.1px; width:100%; max-width:340px;
+  }
+  #resultBtn:hover{background:#2A2C33;}
+
+  /* ---------- Overlay ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(22,24,29,0.55); backdrop-filter:blur(2px);
+    display:flex; align-items:center; justify-content:center; padding:16px; z-index:1000;
+  }
+  .modal{
+    background:var(--bg); border-radius:16px; max-width:520px; width:100%; padding:26px 22px;
+    box-shadow:0 24px 50px -20px rgba(0,0,0,0.35); max-height:88vh; overflow-y:auto;
+    border:1px solid var(--line);
+  }
+  .modal h2{font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0 0 6px;}
+  .modal .stamp{
+    display:inline-block; font-size:11px; letter-spacing:0.08em; font-weight:600;
+    text-transform:uppercase; color:var(--ink-faint); border:1px solid var(--line-strong); border-radius:20px; padding:4px 10px; margin-bottom:14px;
+  }
+  .modal p{font-size:14.5px; line-height:1.55; color:var(--ink-soft); margin:0 0 12px;}
+  .modal-actions{display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-top:10px;}
+  .btn-primary{
+    font-family:'Fraunces',serif; font-weight:600; background:var(--ink); color:#fff; border:none;
+    padding:11px 22px; border-radius:24px; cursor:pointer; font-size:14.5px; flex:1; min-width:130px;
+  }
+  .btn-secondary{
+    font-family:'IBM Plex Sans'; background:transparent; color:var(--ink-soft); border:1px solid var(--line-strong);
+    padding:11px 18px; border-radius:24px; cursor:pointer; font-size:14px; flex:1; min-width:130px;
+  }
+
+  /* ---------- Result spectrum ---------- */
+  .spectrum{margin:18px 0 6px;}
+  .spectrum-track{
+    position:relative; height:10px; border-radius:6px; overflow:visible;
+    background:linear-gradient(90deg, var(--levice), var(--line-strong) 50%, var(--pravice));
+  }
+  .spectrum-marker{
+    position:absolute; top:-7px; width:3px; height:24px; background:var(--ink); border-radius:2px;
+    transform:translateX(-50%); transition:left .6s cubic-bezier(.4,1.2,.4,1);
+  }
+  .spectrum-marker::after{
+    content:''; position:absolute; top:-7px; left:50%; transform:translateX(-50%);
+    border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:7px solid var(--ink);
+  }
+  .spectrum-labels{display:flex; justify-content:space-between; font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint); margin-top:8px;}
+  .result-pct{display:flex; justify-content:space-between; margin-top:14px;}
+  .result-pct div{font-family:'Fraunces',serif; font-weight:600; font-size:23px;}
+  .result-pct span{display:block; font-family:'IBM Plex Sans'; font-weight:500; font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em;}
+  .result-pct .l{color:var(--levice); text-align:left;}
+  .result-pct .p{color:var(--pravice); text-align:right;}
+
+  @media (max-width:480px){
+    .wrap{padding:14px 12px 48px;}
+    header{flex-wrap:wrap;}
+    .ledger{padding:12px;}
+    .modal{padding:20px 16px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <span class="eyebrow">Simulace • Ministerstvo financí (hra)</span>
+      <h1>Sestav si státní rozpočet</h1>
+    </div>
+    <button id="resetBtn">Vše resetovat</button>
+  </header>
+
+  <div class="ledger">
+    <div class="scale">
+      <svg viewBox="0 0 64 44">
+        <line x1="32" y1="4" x2="32" y2="38" stroke="#16181D" stroke-width="3" stroke-linecap="round"/>
+        <line x1="6" y1="40" x2="58" y2="40" stroke="#16181D" stroke-width="3" stroke-linecap="round"/>
+        <g class="beam" id="beam">
+          <line x1="6" y1="14" x2="58" y2="14" stroke="#16181D" stroke-width="3" stroke-linecap="round"/>
+          <path d="M6 14 L0 24 A6 6 0 0 0 12 24 Z" fill="#16181D" opacity="0.55"/>
+          <path d="M58 14 L52 24 A6 6 0 0 0 64 24 Z" fill="#16181D" opacity="0.55"/>
+        </g>
+      </svg>
+    </div>
+    <div class="ledger-text">
+      <div class="ledger-label">Rozpočtová bilance</div>
+      <div class="ledger-value" id="balanceValue">0 položek zvýšeno / 0 sníženo</div>
+      <div class="ledger-note">Rozpočet není bezedná studna — každé navýšení jednoho výdaje musí být kryto škrtem jinde (nebo vyšším dluhem/daněmi). Do každého sloupce navíc vejde maximálně 5 položek. Snaž se, aby bilance byla co nejblíž nule.</div>
+    </div>
+    <div class="balance-pill" id="balancePill">± 0</div>
+  </div>
+
+  <div class="board">
+    <div class="column col-zvysit" data-col="zvysit">
+      <div class="col-head">Zvýšit výdaje na:<small id="count-zvysit">0 / 5 obsazeno</small></div>
+      <div class="col-body" id="col-zvysit"></div>
+    </div>
+    <div class="column col-ponechat" data-col="ponechat">
+      <div class="col-head">Ponechat<small id="count-ponechat">0 / 5 obsazeno</small></div>
+      <div class="col-body" id="col-ponechat">
+        <div class="fixed-chip">Důchody</div>
+        <div class="fixed-chip">Státní dluh</div>
+      </div>
+    </div>
+    <div class="column col-snizit" data-col="snizit">
+      <div class="col-head">Snížit výdaje na:<small id="count-snizit">0 / 5 obsazeno</small></div>
+      <div class="col-body" id="col-snizit"></div>
+    </div>
+  </div>
+
+  <div class="pool-wrap">
+    <div class="pool-title">Přetáhni položky (nebo na ně jen ťukni — přeskočí sloupcem)</div>
+    <div class="pool-body" id="pool"></div>
+  </div>
+
+  <div class="cta-row">
+    <button id="resultBtn">Zjistit výsledek →</button>
+  </div>
+</div>
+
+<!-- Result modal -->
+<div class="overlay" id="resultOverlay" style="display:none;">
+  <div class="modal">
+    <div class="stamp">Výsledek</div>
+    <h2 id="resultHeadline">Tvůj rozpočtový profil</h2>
+    <p id="resultText"></p>
+    <div class="spectrum">
+      <div class="spectrum-track">
+        <div class="spectrum-marker" id="marker" style="left:50%"></div>
+      </div>
+      <div class="spectrum-labels"><span>LEVICE</span><span>STŘED</span><span>PRAVICE</span></div>
+    </div>
+    <div class="result-pct">
+      <div class="l"><span>Levicově</span><span id="pctL">50 %</span></div>
+      <div class="p"><span>Pravicově</span><span id="pctP">50 %</span></div>
+    </div>
+    <p id="unresolvedNote" style="margin-top:14px;"></p>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="closeResultBtn">Zpět k úpravám</button>
+      <button class="btn-primary" id="restartBtn">Začít znovu</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ITEMS = [
+  {id:'veda', label:'Věda a výzkum', lean:-0.3},
+  {id:'rekreace', label:'Rekreační místa', lean:0.0},
+  {id:'zdravotnictvi', label:'Zdravotnictví', lean:-0.6},
+  {id:'obrana', label:'Obrana', lean:0.7},
+  {id:'socialni', label:'Sociální dávky', lean:-0.9},
+  {id:'infrastruktura', label:'Infrastruktura', lean:0.2},
+  {id:'digitalizace', label:'Digitalizace', lean:0.0},
+  {id:'zamestnanci', label:'Státní zaměstnanci', lean:-0.4},
+  {id:'kultura', label:'Kultura', lean:-0.2},
+  {id:'zivotni', label:'Životní prostředí', lean:-0.7},
+  {id:'byty', label:'Výstavba bytů', lean:-0.5},
+  {id:'skolstvi', label:'Technologie ve školství', lean:0.1},
+  {id:'bezpecnost', label:'Bezpečnost; kamery; hlídky', lean:0.6},
+  {id:'firmy', label:'Podpora firem; podnikání', lean:0.8},
+];
+const MAX_ABS = ITEMS.reduce((s,i)=>s+Math.abs(i.lean),0);
+const CYCLE = ['pool','zvysit','ponechat','snizit'];
+const MAX_PER_COL = 5;
+
+let state = {}; // id -> 'pool'|'zvysit'|'ponechat'|'snizit'
+ITEMS.forEach(i=> state[i.id]='pool');
+
+const pool = document.getElementById('pool');
+const cols = {
+  zvysit: document.getElementById('col-zvysit'),
+  ponechat: document.getElementById('col-ponechat'),
+  snizit: document.getElementById('col-snizit'),
+};
+
+function render(){
+  pool.innerHTML='';
+  cols.zvysit.innerHTML='';
+  cols.snizit.innerHTML='';
+  // ponechat keeps fixed chips, remove old dynamic chips only
+  cols.ponechat.querySelectorAll('.chip').forEach(el=>el.remove());
+
+  ITEMS.forEach(item=>{
+    const chip = document.createElement('div');
+    const loc = state[item.id];
+    chip.className='chip'+(loc!=='pool' ? ' chip-'+loc : '');
+    chip.textContent=item.label;
+    chip.dataset.id=item.id;
+    attachDrag(chip, item.id);
+    if(loc==='pool') pool.appendChild(chip);
+    else cols[loc].appendChild(chip);
+  });
+
+  ['zvysit','snizit'].forEach(key=>{
+    if(cols[key].children.length===0){
+      const hint=document.createElement('div');
+      hint.className='empty-hint';
+      hint.textContent='sem přetáhni položky';
+      cols[key].appendChild(hint);
+    }
+  });
+
+  ['zvysit','ponechat','snizit'].forEach(key=>{
+    const n = countInCol(key);
+    const label = document.getElementById('count-'+key);
+    label.textContent = n+' / '+MAX_PER_COL+' obsazeno';
+    label.classList.toggle('full-label', n>=MAX_PER_COL);
+  });
+
+  updateBalance();
+}
+
+function countInCol(loc){
+  return ITEMS.filter(i=>state[i.id]===loc).length;
+}
+
+function updateBalance(){
+  const up = ITEMS.filter(i=>state[i.id]==='zvysit').length;
+  const down = ITEMS.filter(i=>state[i.id]==='snizit').length;
+  const net = up-down;
+  document.getElementById('balanceValue').textContent = up+' zvýšeno / '+down+' sníženo';
+  const pill = document.getElementById('balancePill');
+  pill.textContent = (net>0?'+':'')+net;
+  if(net===0){pill.style.background='var(--up-tint)'; pill.style.color='var(--up)'; pill.style.borderColor='var(--up)';}
+  else if(Math.abs(net)<=2){pill.style.background='var(--hold-tint)'; pill.style.color='var(--ink-soft)'; pill.style.borderColor='var(--line)';}
+  else {pill.style.background='var(--down-tint)'; pill.style.color='var(--down)'; pill.style.borderColor='var(--down)';}
+
+  // tilt the scale beam based on net (positive net = more increases = heavier left pan visually)
+  const tilt = Math.max(-18, Math.min(18, net*4));
+  document.getElementById('beam').style.transform = 'rotate('+tilt+'deg)';
+}
+
+function setLoc(id, loc){
+  const cur = state[id];
+  if(cur===loc) return true;
+  if(loc!=='pool' && countInCol(loc)>=MAX_PER_COL){
+    rejectFeedback(loc);
+    return false;
+  }
+  state[id]=loc;
+  render();
+  return true;
+}
+
+function rejectFeedback(loc){
+  const col = document.querySelector('.column[data-col="'+loc+'"]');
+  if(!col) return;
+  col.classList.add('drop-full','shake');
+  setTimeout(()=> col.classList.remove('drop-full','shake'), 400);
+}
+
+function cycleTap(id){
+  const cur = state[id];
+  let idx = CYCLE.indexOf(cur);
+  for(let step=1; step<=CYCLE.length; step++){
+    const candidate = CYCLE[(idx+step)%CYCLE.length];
+    if(candidate==='pool' || countInCol(candidate)<MAX_PER_COL){
+      setLoc(id, candidate);
+      return;
+    }
+  }
+  // all full (shouldn't normally happen since pool always available)
+  rejectFeedback(cur);
+}
+
+/* ---- Pointer-based drag & drop (mouse + touch) ---- */
+function attachDrag(chip, id){
+  let startX, startY, moved=false, ghost=null, dragging=false;
+  const THRESHOLD = 6;
+
+  chip.addEventListener('pointerdown', (e)=>{
+    startX=e.clientX; startY=e.clientY; moved=false; dragging=false;
+    chip.setPointerCapture(e.pointerId);
+
+    const onMove=(ev)=>{
+      const dx=ev.clientX-startX, dy=ev.clientY-startY;
+      if(!dragging && Math.hypot(dx,dy)>THRESHOLD){
+        dragging=true; moved=true;
+        chip.classList.add('dragging');
+        ghost=document.createElement('div');
+        ghost.className='ghost';
+        ghost.textContent=chip.textContent;
+        document.body.appendChild(ghost);
+        document.querySelectorAll('.column').forEach(c=>c.style.transition='');
+      }
+      if(dragging && ghost){
+        ghost.style.left=ev.clientX+'px';
+        ghost.style.top=ev.clientY+'px';
+        document.querySelectorAll('.column').forEach(c=>c.classList.remove('drop-hover'));
+        const el=document.elementFromPoint(ev.clientX, ev.clientY);
+        const col=el && el.closest('.column');
+        if(col) col.classList.add('drop-hover');
+      }
+    };
+    const onUp=(ev)=>{
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.querySelectorAll('.column').forEach(c=>c.classList.remove('drop-hover'));
+      if(dragging){
+        chip.classList.remove('dragging');
+        if(ghost){ghost.remove(); ghost=null;}
+        const el=document.elementFromPoint(ev.clientX, ev.clientY);
+        const col=el && el.closest('.column');
+        if(col){ setLoc(id, col.dataset.col); }
+        else { render(); }
+      } else {
+        // treat as tap
+        cycleTap(id);
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+}
+
+/* ---- Modals ---- */
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  ITEMS.forEach(i=> state[i.id]='pool');
+  render();
+});
+
+document.getElementById('resultBtn').addEventListener('click', showResult);
+document.getElementById('closeResultBtn').addEventListener('click', ()=>{
+  document.getElementById('resultOverlay').style.display='none';
+});
+document.getElementById('restartBtn').addEventListener('click', ()=>{
+  ITEMS.forEach(i=> state[i.id]='pool');
+  render();
+  document.getElementById('resultOverlay').style.display='none';
+});
+
+function showResult(){
+  let score=0;
+  let unresolved=0;
+  ITEMS.forEach(item=>{
+    const loc=state[item.id];
+    if(loc==='zvysit') score += item.lean;
+    else if(loc==='snizit') score -= item.lean;
+    else if(loc==='pool') unresolved++;
+  });
+  const pct = Math.max(-100, Math.min(100, (score/MAX_ABS)*100));
+  const pravice = Math.round(50 + pct/2);
+  const levice = 100 - pravice;
+
+  document.getElementById('pctL').textContent = levice+' %';
+  document.getElementById('pctP').textContent = pravice+' %';
+  document.getElementById('marker').style.left = (50 + pct/2)+'%';
+
+  let headline, text;
+  const diff = pravice-levice;
+  if(Math.abs(diff)<=6){
+    headline='Jsi téměř přesně uprostřed';
+    text='Tvoje rozhodnutí kombinují sociální i tržní priority ve velmi vyrovnaném poměru — typický profil středového voliče.';
+  } else if(diff>0){
+    const strength = diff>35?'výrazně pravicový':diff>15?'spíše pravicový':'mírně nakloněný k pravici';
+    headline='Tvůj profil je '+strength;
+    text='Upřednostnil jsi obranu, bezpečnost, podporu podnikání a infrastrukturu před rozšiřováním sociálních výdajů — to jsou typicky pravicové priority.';
+  } else {
+    const strength = diff<-35?'výrazně levicový':diff<-15?'spíše levicový':'mírně nakloněný k levici';
+    headline='Tvůj profil je '+strength;
+    text='Dal jsi přednost sociálním dávkám, zdravotnictví, životnímu prostředí a bydlení před škrty ve veřejných výdajích — to jsou typicky levicové priority.';
+  }
+  document.getElementById('resultHeadline').textContent=headline;
+  document.getElementById('resultText').textContent=text;
+
+  const note = document.getElementById('unresolvedNote');
+  if(unresolved>0){
+    note.textContent = 'Pozor: '+unresolved+' položek jsi nechal nerozhodnutých (v zásobníku) — do výsledku se počítají jako neutrální.';
+    note.style.color='var(--down)';
+  } else {
+    note.textContent='';
+  }
+
+  document.getElementById('resultOverlay').style.display='flex';
+}
+
+render();
+</script>
+</body>
+</html>
