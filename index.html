@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Státní rozpočet — swipe hra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAFAF8;
+    --surface:#FFFFFF;
+    --ink:#16181D;
+    --ink-soft:#6B6E76;
+    --ink-faint:#9A9CA4;
+    --line:#E6E4DD;
+    --line-strong:#D6D3C8;
+
+    --up:#2E7D4F;       /* zvýšit */
+    --up-tint:#EAF4EE;
+    --down:#A34B3F;     /* snížit */
+    --down-tint:#F5EEEC;
+
+    --levice:#A34B3F;
+    --pravice:#345E82;
+
+    --radius:18px;
+    --shadow:0 1px 2px rgba(22,24,29,0.04), 0 6px 16px -10px rgba(22,24,29,0.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0; height:100%; overflow:hidden;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior:none;
+  }
+  .wrap{
+    max-width:440px; margin:0 auto; width:100%;
+    height:100dvh; height:100vh;
+    padding:10px 10px 12px;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  /* ---------- Header ---------- */
+  header{flex:none; padding-bottom:8px; text-align:center;}
+  header .eyebrow{
+    font-size:10px; letter-spacing:0.09em; text-transform:uppercase; font-weight:600;
+    color:var(--ink-faint); display:block; margin-bottom:2px;
+  }
+  header h1{
+    font-family:'Fraunces', serif; font-weight:600; font-size:clamp(17px,5vw,21px);
+    margin:0; letter-spacing:0.1px; line-height:1.15;
+  }
+
+  /* ---------- App box: everything contained, aligned, one screen ---------- */
+  .app-box{
+    flex:1 1 auto; min-height:0; width:100%;
+    background:var(--surface); border:1px solid var(--line); border-radius:20px;
+    display:flex; flex-direction:column; overflow:hidden; padding:12px;
+  }
+
+  /* ---------- Progress + tally ---------- */
+  .meta-row{flex:none; display:flex; align-items:center; gap:8px; margin-bottom:8px;}
+  .progress-track{flex:1; height:5px; border-radius:6px; background:var(--line); overflow:hidden;}
+  .progress-fill{height:100%; background:var(--ink); border-radius:6px; width:0%; transition:width .35s ease;}
+  .progress-label{font-size:10.5px; font-weight:600; color:var(--ink-faint); white-space:nowrap; font-variant-numeric:tabular-nums;}
+
+  .tally-row{flex:none; display:flex; gap:6px; margin-bottom:8px;}
+  .tally{flex:1; border-radius:10px; padding:5px 9px; font-size:10.5px; font-weight:600; display:flex; align-items:center; justify-content:space-between; border:1px solid var(--line); min-width:0;}
+  .tally.up{background:var(--up-tint); color:var(--up); border-color:var(--up);}
+  .tally.down{background:var(--down-tint); color:var(--down); border-color:var(--down);}
+  .tally span.n{font-family:'Fraunces',serif; font-size:14px;}
+
+  .budget-row{
+    position:relative; overflow:visible;
+    flex:none; display:flex; align-items:center; justify-content:space-between;
+    padding:6px 10px; border-radius:10px; border:1px solid var(--line);
+    font-size:10.5px; font-weight:600; margin-bottom:8px;
+    transition:background .3s ease, border-color .3s ease, color .3s ease;
+  }
+  .budget-row.neg{background:var(--down-tint); color:var(--down); border-color:var(--down);}
+  .budget-row.pos{background:var(--up-tint); color:var(--up); border-color:var(--up);}
+  .budget-row .b-val{
+    font-family:'Fraunces',serif; font-size:14px; font-variant-numeric:tabular-nums;
+    display:inline-block; transform-origin:center;
+  }
+  .budget-row .b-val.bump{ animation:bVal .45s cubic-bezier(.34,1.6,.64,1); }
+  @keyframes bVal{
+    0%{ transform:scale(1); }
+    35%{ transform:scale(1.45); }
+    100%{ transform:scale(1); }
+  }
+  .budget-row.flash{ animation:bRow .5s ease; }
+  @keyframes bRow{
+    0%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+    25%{ box-shadow:0 0 0 5px currentColor; }
+    100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+  }
+  .budget-delta{
+    position:absolute; right:10px; top:2px; font-family:'Fraunces',serif; font-weight:700;
+    font-size:13px; opacity:0; pointer-events:none;
+  }
+  .budget-delta.show{ animation:bDelta .9s ease-out forwards; }
+  @keyframes bDelta{
+    0%{ opacity:0; transform:translateY(4px) scale(0.7); }
+    18%{ opacity:1; transform:translateY(-4px) scale(1.25); }
+    100%{ opacity:0; transform:translateY(-30px) scale(1); }
+  }
+
+  /* ---------- Stack ---------- */
+  .stage{position:relative; flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; touch-action:none;}
+  .stack{position:relative; width:100%; height:100%; max-width:100%;}
+  .card{
+    position:absolute; inset:0; background:var(--surface); border-radius:16px;
+    border:1px solid var(--line); box-shadow:none;
+    padding:clamp(12px,4vw,18px); display:flex; flex-direction:column;
+    cursor:grab; user-select:none; will-change:transform; overflow:hidden;
+  }
+  .card:active{cursor:grabbing;}
+  .card h2{
+    font-family:'Fraunces',serif; font-weight:600; font-size:clamp(16px,5.2vw,20px); line-height:1.18; margin:0 0 8px; flex:none;
+  }
+
+  .card p{font-size:clamp(11.5px,3.4vw,13.5px); line-height:1.48; color:var(--ink-soft); margin:0; overflow:hidden;}
+
+  .pro-con{
+    margin-top:16px; flex:none; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:2px 11px;
+  }
+  .pro-con .line{
+    font-size:clamp(10.5px,3vw,12px); line-height:1.48; display:flex; gap:9px; align-items:flex-start;
+    color:var(--ink); padding:9px 0;
+  }
+  .pro-con .sign{
+    font-family:'Fraunces',serif; font-weight:700; flex:none;
+    width:18px; height:18px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11.5px; line-height:1; margin-top:1px;
+  }
+  .pro-con .plus .sign{background:var(--up-tint); color:var(--up);}
+  .pro-con .minus .sign{background:var(--down-tint); color:var(--down);}
+  .pro-con .line span:last-child{padding-top:1px; font-weight:500;}
+  .card .question{
+    font-size:clamp(11px,3.2vw,12.5px); font-weight:600; color:var(--ink); margin:14px 0 0; flex:none;
+  }
+  .card .hint-row{
+    margin-top:auto; display:flex; justify-content:space-between; font-size:10px; font-weight:700;
+    letter-spacing:0.03em; padding-top:8px; flex:none;
+  }
+  .card .hint-row .left{color:var(--up);}
+  .card .hint-row .right{color:var(--down);}
+
+  .stamp{
+    position:absolute; top:16px; font-family:'Fraunces',serif; font-weight:700; font-size:clamp(16px,5vw,22px);
+    padding:4px 10px; border-radius:8px; border:3px solid; opacity:0; transform:rotate(-18deg);
+    letter-spacing:0.03em; pointer-events:none;
+  }
+  .stamp.left{left:12px; color:var(--up); border-color:var(--up); transform:rotate(-18deg);}
+  .stamp.right{right:12px; color:var(--down); border-color:var(--down); transform:rotate(18deg);}
+
+
+
+  /* ---------- Overlay / result ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(22,24,29,0.55); backdrop-filter:blur(2px);
+    display:flex; align-items:center; justify-content:center; padding:16px; z-index:1000;
+  }
+  .modal{
+    background:var(--bg); border-radius:16px; max-width:420px; width:100%; padding:20px 18px;
+    box-shadow:0 24px 50px -20px rgba(0,0,0,0.35); max-height:86vh; overflow-y:auto;
+    border:1px solid var(--line);
+  }
+  .modal h2{font-family:'Fraunces',serif; font-weight:600; font-size:21px; margin:0 0 6px; line-height:1.25;}
+  .modal .stamp2{
+    display:inline-block; font-size:11px; letter-spacing:0.08em; font-weight:600;
+    text-transform:uppercase; color:var(--ink-faint); border:1px solid var(--line-strong); border-radius:20px; padding:4px 10px; margin-bottom:14px;
+  }
+  .modal p{font-size:14.5px; line-height:1.58; color:var(--ink-soft); margin:0 0 12px;}
+  .gotcha-box{
+    background:var(--down-tint); border:1px solid var(--down); border-radius:12px; padding:14px 15px; margin-bottom:16px;
+  }
+  .gotcha-box.pos{background:var(--up-tint); border-color:var(--up);}
+  .gotcha-box .g-head{font-family:'Fraunces',serif; font-weight:600; font-size:16px; margin-bottom:6px; color:var(--ink);}
+  .gotcha-box p{color:var(--ink); margin:0; font-size:13.5px;}
+  .modal-actions{display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-top:16px;}
+  .btn-primary{
+    font-family:'Fraunces',serif; font-weight:600; background:var(--ink); color:#fff; border:none;
+    padding:11px 22px; border-radius:24px; cursor:pointer; font-size:14.5px; flex:1; min-width:130px;
+  }
+  .btn-secondary{
+    font-family:'IBM Plex Sans'; background:transparent; color:var(--ink-soft); border:1px solid var(--line-strong);
+    padding:11px 18px; border-radius:24px; cursor:pointer; font-size:14px; flex:1; min-width:130px;
+  }
+
+  .profile-summary{
+    margin:8px 0 14px; padding:10px 10px 12px; border:1px solid var(--line);
+    border-radius:14px; background:rgba(255,255,255,0.62);
+  }
+  .spectrum{margin:0 0 6px;}
+  .spectrum-track{
+    position:relative; height:10px; border-radius:6px; overflow:visible;
+    background:linear-gradient(90deg, var(--levice), var(--line-strong) 50%, var(--pravice));
+  }
+  .spectrum-marker{
+    position:absolute; top:-7px; width:3px; height:24px; background:var(--ink); border-radius:2px;
+    transform:translateX(-50%); transition:left .6s cubic-bezier(.4,1.2,.4,1);
+  }
+  .spectrum-marker::after{
+    content:''; position:absolute; top:-7px; left:50%; transform:translateX(-50%);
+    border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:7px solid var(--ink);
+  }
+  .spectrum-labels{display:flex; justify-content:space-between; font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint); margin-top:8px;}
+
+  @media (max-width:480px){
+    .wrap{padding:14px 12px 40px;}
+    .modal{padding:20px 16px;}
+    .stack{height:380px;}
+  }
+
+  /* ---------- Lock toast ---------- */
+  .lock-toast{
+    position:fixed; left:50%; bottom:28px; transform:translate(-50%, 12px);
+    max-width:340px; width:calc(100% - 32px);
+    background:var(--ink); color:#fff; font-family:'IBM Plex Sans', sans-serif;
+    font-size:13px; font-weight:500; line-height:1.4;
+    padding:12px 16px; border-radius:14px; text-align:center;
+    box-shadow:0 12px 28px -10px rgba(0,0,0,0.4);
+    opacity:0; pointer-events:none; z-index:2000;
+    transition:opacity .25s ease, transform .25s ease;
+  }
+  .lock-toast.show{ opacity:1; transform:translate(-50%, 0); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Simulace • Ministerstvo financí</span>
+    <h1>Sestav si státní rozpočet</h1>
+  </header>
+
+  <div class="app-box">
+    <div class="meta-row">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">0 / 14</div>
+    </div>
+
+    <div class="budget-row" id="budgetRow">
+      <span>Rozpočet ČR</span>
+      <span class="b-val" id="budgetVal">0 mld. Kč</span>
+      <span class="budget-delta" id="budgetDelta"></span>
+    </div>
+
+    <div class="stage">
+      <div class="stack" id="stack"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Intro modal -->
+<div class="overlay" id="introOverlay" style="display:flex;">
+  <div class="modal">
+    <div class="stamp2">Než začneš</div>
+    <h2>Jak to funguje</h2>
+    <p>Uvidíš 20 karet, každá je jeden výdaj státního rozpočtu. Přejeď ji <b style="color:var(--down);">doprava</b>, pokud chceš přidat peníze, nebo <b style="color:var(--up);">doleva</b>, pokud chceš ubrat.</p>
+    <div class="gotcha-box">
+      <div class="g-head">⚠️ Státní rozpočet není nafukovací</div>
+      <p>Přidáš-li na jednom místě, musíš jinde ubrat — nebo zvednout daně či dluh. Nahoře budeš celou dobu vidět, jak se rozpočet mění od nuly nahoru nebo dolů podle tvých rozhodnutí.</p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="startBtn" style="opacity:0; pointer-events:none; transition:opacity .4s ease;">Chápu, začínáme →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Result modal -->
+<div class="overlay" id="resultOverlay" style="display:none;">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<!-- Lock toast -->
+<div class="lock-toast" id="lockToast"></div>
+
+<script>
+const ITEMS = [
+  {id:'veda', label:'Věda a výzkum', lean:-0.3, text:'Peníze se rozdělují mezi univerzity, výzkumné ústavy a firmy, které vyvíjejí nové technologie a léky. Státy je zvyšují, když chtějí posílit konkurenceschopnost a udržet si chytré lidi doma. V krizi ale patří mezi první škrty, protože výsledky výzkumu se projeví až za mnoho let.', pro:'Přináší inovace a posouvá zemi dopředu.', proti:'Výsledky se projeví až za mnoho let.'},
+  {id:'rekreace', label:'Rekreační místa', lean:0.0, text:'Peníze jdou obcím na stavbu a údržbu parků, hřišť, cyklostezek a sportovišť. Investice rostou hlavně v bohatších městech, která chtějí přilákat obyvatele a zlepšit prostředí k životu. Při škrtech patří mezi první oběti, protože jejich absence nikoho hned neohrozí.', pro:'Zlepšuje kvalitu života a zdraví lidí.', proti:'Není to tak nutné jako nemocnice nebo školy.'},
+  {id:'zdravotnictvi', label:'Zdravotnictví', lean:-0.6, text:'Peníze jdou na provoz nemocnic, platy lékařů a sester, léky a přístroje. Výdaje dlouhodobě rostou hlavně kvůli stárnutí populace a dražším lékům a technologiím. Škrtat se tu politici bojí, protože dopad je vidět hned — v čekacích dobách a dostupnosti péče.', pro:'Zajišťuje dostupnou a kvalitní péči o pacienty.', proti:'Je to jedna z nejdražších položek rozpočtu.'},
+  {id:'obrana', label:'Obrana', lean:0.7, text:'Peníze jdou na zbraně, výcvik vojáků a modernizaci armády. Výdaje rostou hlavně v době mezinárodního napětí nebo válek v okolí, jako naposledy po napadení Ukrajiny. V klidnějších dobách naopak klesají, protože armáda soupeří o peníze s jinými prioritami.', pro:'Zvyšuje bezpečnost země v nejisté době.', proti:'Je extrémně nákladná a jde na úkor jiných oblastí.'},
+  {id:'socialni', label:'Sociální dávky', lean:-0.9, text:'Peníze jdou na dávky pro nezaměstnané, rodiny s nízkými příjmy a lidi v hmotné nouzi. Výdaje rostou hlavně v hospodářské krizi, kdy přibývá lidí bez práce. Vlády je naopak omezují, když chtějí šetřit rozpočet nebo motivovat lidi k návratu do práce.', pro:'Pomáhá nejzranitelnějším lidem přežít krizi.', proti:'Vysoké dávky mohou snižovat motivaci pracovat.'},
+  {id:'infrastruktura', label:'Infrastruktura', lean:0.2, text:'Peníze jdou na výstavbu a opravy silnic, mostů, železnic a vodovodů. Investice rostou, když chce vláda pomocí velkých staveb podpořit ekonomiku a zaměstnanost. Při škrtech se údržba často odkládá, což se dlouhodobě prodraží, protože zanedbaná infrastruktura se opravuje hůř a dráž.', pro:'Bez údržby se infrastruktura rozpadá a oprava je pak dražší.', proti:'Velké stavby se často prodražují a táhnou se roky.'},
+  {id:'digitalizace', label:'Digitalizace úřadů', lean:0.0, text:'Peníze jdou na online formuláře, elektronické systémy a datové schránky úřadů. Výdaje rostou, když chce stát zjednodušit lidem život a ušetřit na papírování a úřednících. Škrtá se tu proto, že zavedení nových systémů je drahé a přínos je vidět až po letech.', pro:'Ušetří lidem čas a zjednoduší vyřizování věcí.', proti:'Zavedení je drahé a výsledky nejsou vidět hned.'},
+  {id:'zamestnanci', label:'Platy ve státní správě', lean:-0.4, text:'Peníze jdou na platy úředníků, učitelů, sociálních pracovníků a dalších zaměstnanců státu. Rostou, když chce vláda udržet kvalitní lidi ve veřejné správě a nepřijít o ně ve prospěch soukromého sektoru. Škrty tu bývají bolestivé, protože často znamenají propouštění a horší fungování úřadů.', pro:'Vyšší platy udrží kvalitní lidi ve státní správě.', proti:'Je to obrovská položka, kterou lze snížit jen s propouštěním.'},
+  {id:'kultura', label:'Kultura', lean:-0.2, text:'Peníze jdou na divadla, muzea, knihovny, galerie a podporu umělců. Výdaje rostou v dobrých časech, kdy si to stát může dovolit a chce podpořit vzdělání a tradice. V krizi patří kultura mezi první škrty, protože se bez ní dá aspoň krátkodobě fungovat.', pro:'Podporuje vzdělání, tradice a kvalitu života.', proti:'Ne každý kulturu využívá stejně – na rozdíl od školství platí někteří lidé za něco, co sami nikdy nenavštíví.'},
+  {id:'zivotni', label:'Životní prostředí', lean:-0.7, text:'Peníze jdou na ochranu přírody, čištění vody a ovzduší a boj proti změně klimatu. Výdaje rostou pod tlakem vědců a mezinárodních závazků, například evropské Zelené dohody. Škrtá se tu hlavně proto, že přísnější pravidla zdražují výrobu a firmy proti nim často protestují.', pro:'Chrání zdraví lidí a přírodu do budoucna.', proti:'Přísnější pravidla mohou zdražit výrobu a práci firem.'},
+  {id:'byty', label:'Výstavba dostupných bytů', lean:-0.5, text:'Peníze jdou na výstavbu obecních a dostupných bytů pro lidi, kteří si nemohou dovolit vlastní bydlení. Výdaje rostou, když v zemi chybí byty a nájmy zdražují rychleji než mzdy. Škrtá se tu proto, že výstavba je drahá, trvá roky a výsledky nejsou vidět hned.', pro:'Pomáhá lidem, kteří si nemohou dovolit vlastní bydlení.', proti:'Výstavba je drahá a trvá roky, než se projeví.'},
+  {id:'skolstvi', label:'Technologie ve školství', lean:0.1, text:'Peníze jdou na počítače, tablety, interaktivní tabule a digitální učební materiály ve školách. Investice rostou, když chce stát připravit žáky na moderní trh práce. Škrtá se tu hlavně proto, že bez proškolených učitelů zůstává drahá technika často nevyužitá.', pro:'Moderní výuka připravuje žáky na budoucnost.', proti:'Bez proškolených učitelů zůstává technika nevyužitá.'},
+  {id:'bezpecnost', label:'Kamery a policejní hlídky', lean:0.6, text:'Peníze jdou na kamerové systémy, více policistů v ulicích a jejich vybavení. Výdaje rostou po vlnách kriminality nebo teroristických útocích, kdy lidé žádají větší pocit bezpečí. Škrtá se tu kvůli vysokým nákladům na provoz a kritice, že kamery zasahují do soukromí lidí.', pro:'Odrazuje od trestné činnosti a zrychluje zásah policie.', proti:'Zasahuje do soukromí a je nákladné na provoz.'},
+  {id:'firmy', label:'Podpora firem a podnikání', lean:0.8, text:'Peníze jdou na dotace, daňové úlevy a podporu podnikání a startupů. Výdaje rostou, když chce vláda podpořit zaměstnanost a růst ekonomiky, hlavně v regionech s vysokou nezaměstnaností. Škrtá se tu proto, že dotace často míří i k firmám, které je vůbec nepotřebují.', pro:'Podporuje vznik pracovních míst a růst ekonomiky.', proti:'Dotace často míří k firmám, které je ani nepotřebují.'},
+  {id:'duchody', label:'Důchody a penze', lean:-0.3, text:'Peníze jdou na měsíční výplaty důchodů seniorům, kteří už nepracují. Výdaje rostou téměř automaticky s tím, jak přibývá starších lidí a prodlužuje se délka života. Snižovat důchody je politicky velmi nepopulární, takže se škrtá jen výjimečně a opatrně.', pro:'Zajišťuje důstojný život lidem, kteří už nepracují.', proti:'S rostoucím počtem seniorů je čím dál dražší.'},
+  {id:'dopravaverejna', label:'Veřejná doprava', lean:-0.4, text:'Peníze jdou na provoz vlaků, autobusů, tramvají a metra, protože samotné jízdné náklady nepokryje. Výdaje rostou, když chce stát snížit znečištění a nahradit auta ve městech. Škrtá se tu hlavně proto, že jde o dlouhodobě ztrátovou službu, kterou musí dotovat stát nebo obce.', pro:'Umožňuje dopravu i lidem bez auta a snižuje znečištění.', proti:'Provoz je dlouhodobě ztrátový a musí se dotovat.'},
+  {id:'zemedelstvi', label:'Zemědělské dotace', lean:0.3, text:'Peníze jdou zemědělcům a farmářům jako dotace na pěstování plodin a chov zvířat. Výdaje rostou hlavně díky společné zemědělské politice Evropské unie, která má zajistit dostatek potravin. Škrtá se tu kvůli kritice, že velkou část dotací čerpají hlavně největší agropodniky.', pro:'Pomáhá udržet domácí produkci potravin.', proti:'Velkou část dotací čerpají hlavně největší podniky.'},
+  {id:'sport', label:'Sport a tělovýchova', lean:-0.1, text:'Peníze jdou sportovním klubům, na stavbu hřišť a tělocvičen a na podporu mládežnického sportu. Výdaje rostou, když stát chce podporovat zdravý životní styl a pohyb dětí. Náklady lze snížit, protože část sportu se financuje také ze sponzorů, vstupného a členských příspěvků.', pro:'Podporuje pohyb u dětí a může dlouhodobě snížit výdaje na zdravotnictví.', proti:'Více peněz zlepší možnosti, ale nezaručí, že děti budou chtít více sportovat.'},
+  {id:'hasici', label:'Hasiči a záchranná služba', lean:0.4, text:'Peníze jdou na hasiče, záchranáře, vozidla a techniku pro zásahy u požárů, nehod a katastrof. Výdaje rostou po velkých katastrofách, jako jsou povodně nebo lesní požáry, kdy se ukáže nedostatečné vybavení. Škrtá se tu jen zřídka, protože na této službě přímo závisí lidské životy.', pro:'Zachraňuje životy a majetek při nehodách a katastrofách.', proti:'Kvalitní technika a vybavení jsou velmi drahé.'},
+  {id:'zahranicni', label:'Zahraniční rozvojová pomoc', lean:-0.8, text:'Peníze jdou na pomoc chudším a krizí zasaženým zemím, například na potraviny, léky nebo obnovu po katastrofách. Výdaje rostou, když chce stát budovat dobré vztahy se zahraničím a plnit mezinárodní závazky. Škrtá se tu nejčastěji v krizi, kdy voliči žádají, aby se peníze použily doma.', pro:'Buduje dobré vztahy a stabilitu i mimo naši zemi.', proti:'Pomoc směřuje do zahraničí místo řešení domácích problémů.'},
+];
+const MAX_ABS = ITEMS.reduce((s,i)=>s+Math.abs(i.lean),0);
+
+// Reálný schválený schodek státního rozpočtu ČR na rok 2026 (příjmy 2 117,8 mld. Kč, výdaje 2 427,8 mld. Kč)
+// slouží jen jako vysvětlení v závěru — samotná hra začíná od nuly, aby bylo jasně vidět
+// jak se rozpočet mění (přičítá/odečítá) podle rozhodnutí.
+const REAL_DEFICIT_2026 = -310; // mld. Kč
+const BUDGET_START = 0; // mld. Kč
+const ITEM_AMOUNT = 20;    // mld. Kč na jednu kartu
+const CARD_LOCK_MS = 15000; // kartu nelze potáhnout dřív než po 15 vteřinách
+
+let order = [...ITEMS];
+let idx = 0;
+let choices = {}; // id -> 'up' | 'down'
+let budget = BUDGET_START;
+
+const stack = document.getElementById('stack');
+const progressFill = document.getElementById('progressFill');
+const progressLabel = document.getElementById('progressLabel');
+const budgetRow = document.getElementById('budgetRow');
+const budgetVal = document.getElementById('budgetVal');
+const budgetDelta = document.getElementById('budgetDelta');
+const lockToast = document.getElementById('lockToast');
+
+let lockToastTimer = null;
+function showLockMessage(text){
+  lockToast.textContent = text;
+  lockToast.classList.add('show');
+  clearTimeout(lockToastTimer);
+  lockToastTimer = setTimeout(()=>{ lockToast.classList.remove('show'); }, 8000);
+}
+
+function updateBudget(delta){
+  budgetVal.textContent = (budget>0?'+':'') + budget + ' mld. Kč';
+  budgetRow.classList.toggle('neg', budget<0);
+  budgetRow.classList.toggle('pos', budget>=0);
+
+  if(delta){
+    budgetVal.classList.remove('bump'); void budgetVal.offsetWidth; budgetVal.classList.add('bump');
+    budgetRow.classList.remove('flash'); void budgetRow.offsetWidth; budgetRow.classList.add('flash');
+    budgetDelta.textContent = (delta>0?'+':'') + delta + ' mld.';
+    budgetDelta.style.color = delta>0 ? 'var(--up)' : 'var(--down)';
+    budgetDelta.classList.remove('show'); void budgetDelta.offsetWidth; budgetDelta.classList.add('show');
+  }
+}
+
+function shuffle(arr){
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function buildStack(){
+  stack.innerHTML='';
+  const visible = order.slice(idx, idx+3);
+  visible.forEach((item, i)=>{
+    const depth = i; // 0,1,2 -> top (aktuální) karta má vždy depth 0
+    const card = document.createElement('div');
+    card.className='card';
+    card.style.zIndex = 10-depth;
+    card.style.transform = 'translateY(0)';
+    card.style.opacity = depth>1 ? '0' : '1';
+    card.innerHTML = `
+      <h2>${item.label}</h2>
+      <p>${item.text}</p>
+      <div class="pro-con">
+        <div class="line plus"><span class="sign">+</span><span>${item.pro}</span></div>
+        <div class="line minus"><span class="sign">−</span><span>${item.proti}</span></div>
+      </div>
+      <p class="question">Zvýšíš, nebo snížíš náklady na tuto oblast?</p>
+      <div class="hint-row"><span class="left">← SNÍŽIT</span><span class="right">ZVÝŠIT →</span></div>
+      <div class="stamp left">SNÍŽIT</div>
+      <div class="stamp right">ZVÝŠIT</div>
+    `;
+    if(depth===0){
+      attachSwipe(card, item.id);
+    }
+    stack.appendChild(card);
+  });
+  updateProgress();
+}
+
+function updateProgress(){
+  progressFill.style.width = (idx/order.length*100)+'%';
+  progressLabel.textContent = idx+' / '+order.length;
+}
+
+function commit(id, direction){
+  if(choices[id]) return;
+  choices[id]=direction;
+  const delta = direction==='up' ? -ITEM_AMOUNT : ITEM_AMOUNT;
+  budget += delta;
+  updateBudget(delta);
+  idx++;
+  if(idx>=order.length){
+    setTimeout(showResult, 250);
+  } else {
+    buildStack();
+  }
+}
+
+function attachSwipe(card, id){
+  let startX=0, startY=0, dx=0, dy=0, dragging=false;
+  const cardShownAt = Date.now();
+  const stampL = card.querySelector('.stamp.left');
+  const stampR = card.querySelector('.stamp.right');
+
+  function onMove(clientX, clientY){
+    dx = clientX-startX; dy = clientY-startY;
+    const rot = dx/16;
+    card.style.transform = `translate(${dx}px, ${dy*0.35}px) rotate(${rot}deg)`;
+    const t = Math.min(Math.abs(dx)/100, 1);
+    if(dx>0){ stampR.style.opacity=t; stampL.style.opacity=0; }
+    else if(dx<0){ stampL.style.opacity=t; stampR.style.opacity=0; }
+    else { stampL.style.opacity=0; stampR.style.opacity=0; }
+  }
+
+  function reset(){
+    card.style.transition='transform .3s cubic-bezier(.4,1.2,.4,1)';
+    card.style.transform='translate(0,0) rotate(0)';
+    stampL.style.opacity=0; stampR.style.opacity=0;
+    setTimeout(()=>{ card.style.transition=''; }, 300);
+  }
+
+  function fly(direction){
+    const target = direction==='up' ? window.innerWidth+200 : -window.innerWidth-200;
+    card.style.transition='transform .35s ease-in';
+    card.style.transform = `translate(${target}px, ${dy*0.35}px) rotate(${direction==='up'?30:-30}deg)`;
+    setTimeout(()=> commit(id, direction), 260);
+  }
+
+  card.addEventListener('pointerdown', (e)=>{
+    dragging=true;
+    startX=e.clientX; startY=e.clientY;
+    card.setPointerCapture(e.pointerId);
+    card.style.transition='';
+  });
+  card.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    onMove(e.clientX, e.clientY);
+  });
+  card.addEventListener('pointerup', (e)=>{
+    if(!dragging) return;
+    dragging=false;
+    if(Math.abs(dx)>90){
+      const elapsed = Date.now()-cardShownAt;
+      if(elapsed < CARD_LOCK_MS){
+        showLockMessage('Když už jsi kvůli tomu přišel do školy, věnuj tomu těch pár sekund a přečti si to');
+        reset();
+      } else {
+        fly(dx>0?'up':'down');
+      }
+    } else {
+      reset();
+    }
+    dx=0; dy=0;
+  });
+  card.addEventListener('pointercancel', ()=>{ dragging=false; reset(); dx=0; dy=0; });
+
+  card._fly = fly;
+}
+
+function restart(){
+  order = shuffle(ITEMS);
+  idx = 0;
+  choices = {};
+  budget = BUDGET_START;
+  updateBudget();
+  document.getElementById('resultOverlay').style.display='none';
+  buildStack();
+}
+
+function showResult(){
+  const ups = Object.values(choices).filter(v=>v==='up').length;
+  const downs = Object.values(choices).filter(v=>v==='down').length;
+  const total = order.length;
+
+  let score = 0;
+  order.forEach(item=>{
+    if(choices[item.id]==='up') score += item.lean;
+    else score -= item.lean;
+  });
+  const pct = Math.max(-100, Math.min(100, (score/MAX_ABS)*100));
+  const pravice = Math.round(50 + pct/2);
+  const levice = 100 - pravice;
+  const diff = pravice-levice;
+
+  let headline, text;
+  if(Math.abs(diff)<=6){
+    headline='Jsi téměř přesně uprostřed';
+    text='Tvoje rozhodnutí kombinují sociální i tržní priority ve vyrovnaném poměru — typický profil středového voliče.';
+  } else if(diff>0){
+    const strength = diff>35?'výrazně pravicový':diff>15?'spíše pravicový':'mírně nakloněný k pravici';
+    headline='Tvůj profil je '+strength;
+    text='Upřednostnil jsi obranu, bezpečnost, podporu podnikání a infrastrukturu před rozšiřováním sociálních výdajů — to jsou typicky pravicové priority.';
+  } else {
+    const strength = diff<-35?'výrazně levicový':diff<-15?'spíše levicový':'mírně nakloněný k levici';
+    headline='Tvůj profil je '+strength;
+    text='Dal jsi přednost sociálním dávkám, zdravotnictví, životnímu prostředí a bydlení před škrty ve veřejných výdajích — to jsou typicky levicové priority.';
+  }
+
+  // gotcha logic: was the player basically just swiping one direction the whole time?
+  let gotcha = '';
+  if(ups===total){
+    gotcha = `
+      <div class="gotcha-box">
+        <div class="g-head">🎉 Zvýšil jsi úplně všechno!</div>
+        <p>Přidal jsi peníze na zdravotnictví, obranu, kulturu, byty i platy — na všechno. Jenže stát má stejně jako rodina jen omezenou peněženku. Když pořád jen přidáváš a nikde neubereš, chybějící peníze si musíš půjčit. Tomu se říká dluh. A kdyby si stát takhle půjčoval pořád dál a nikdy peníze nevracel, jednoho dne by přestal mít na splátky — přesně jako člověk, který si bere půjčku za půjčkou. Stát by zkrachoval.</p>
+      </div>`;
+  } else if(downs===total){
+    gotcha = `
+      <div class="gotcha-box">
+        <div class="g-head">💀 Snížil jsi úplně všechno!</div>
+        <p>Rozpočtu by sice krásně vyšla nula, ale za jakou cenu? Nemocnice by neměly na léky, silnice by se rozpadaly a vojáci by neměli ani helmy. Škrtat všude najednou vypadá na papíře jednoduše, ale stát musí lidem pořád něco skutečně poskytovat — jinak přestane fungovat.</p>
+      </div>`;
+  } else if(ups>=total-2){
+    gotcha = `
+      <div class="gotcha-box">
+        <div class="g-head">Skoro jsi jen přidával</div>
+        <p>Zvýšil jsi ${ups} z ${total} položek. To je štědré, ale rozpočet není bezedná studna. Skoro každé zvýšení muselo být zaplacené škrtem jinde, vyššími daněmi, nebo — nejčastěji — novým dluhem. Čím víc si stát půjčuje a nic za to neškrtá, tím blíž je k tomu, že by jednou nemusel mít na splátky.</p>
+      </div>`;
+  } else if(downs>=total-2){
+    gotcha = `
+      <div class="gotcha-box">
+        <div class="g-head">Skoro jsi jen škrtal</div>
+        <p>Snížil jsi ${downs} z ${total} položek. Rozpočtu by to prospělo, ale lidem ne — tak tvrdé škrty napříč vším obvykle znamenají horší nemocnice, školy i silnice. A to si voliči u příštích voleb pamatují.</p>
+      </div>`;
+  }
+
+  document.getElementById('modalBody').innerHTML = `
+    <div class="stamp2">Výsledek</div>
+    <h2>${headline}</h2>
+    <p>${text}</p>
+    <div class="profile-summary">
+      <div class="spectrum">
+        <div class="spectrum-track"><div class="spectrum-marker" style="left:${50+pct/2}%"></div></div>
+        <div class="spectrum-labels"><span>LEVICE</span><span>STŘED</span><span>PRAVICE</span></div>
+      </div>
+    </div>
+    <div class="gotcha-box ${budget>=0?'pos':''}">
+      <div class="g-head">${budget>=0?'📈':'📉'} Tvůj rozpočet</div>
+      <p>Začínal jsi na 0 mld. Kč a po tvých rozhodnutích skončil na <b>${budget>0?'+':''}${budget} mld. Kč</b>. ${budget <= -50
+        ? 'Takový výsledek je nepřijatelný, protože dlouhodobě rostoucí deficit zvyšuje zadlužení státu a omezuje prostor pro financování klíčových služeb.'
+        : 'Jde o jenom mírný deficit, který ještě nemusí znamenat krizi, ale i tak je vhodné jej vnímat jako signál, že rozpočet je třeba udržovat vyrovnaný.'} Pro srovnání: skutečný rozpočet ČR pracuje s výdaji kolem 2 427,8 mld. Kč a příjmy kolem 2 117,8 mld. Kč.</p>
+    </div>
+  `;
+  document.getElementById('resultOverlay').style.display='flex';
+}
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  document.getElementById('introOverlay').style.display='none';
+});
+setTimeout(()=>{
+  const btn = document.getElementById('startBtn');
+  btn.style.opacity='1';
+  btn.style.pointerEvents='auto';
+}, 15000);
+
+restart();
+</script>
+</body>
+</html>
